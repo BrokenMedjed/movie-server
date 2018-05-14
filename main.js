@@ -47,7 +47,6 @@ https.createServer(certopt, (req, res) => {
 	if (url.pathname == "/content") {
 		const fsize     = fs.statSync(process.argv[3]).size;
 		const range_hdr = req.headers["range"];
-		console.log("[" + process.argv[1] + "] Serving " + String(fsize) + " bytes");
 		if (range_hdr) {
 			const range_parts = range_hdr.replace(/bytes=/, "").split("-");
 			const range_start = parseInt(range_parts[0]);
@@ -62,23 +61,53 @@ https.createServer(certopt, (req, res) => {
 			});
 			const stm = fs.createReadStream(process.argv[3], {range_start, range_end});
 			stm.on("data", (chunk) => { res.write(chunk, "binary"); });
-			stm.on("end",  ()      => { res.end(); });
+			stm.on("end",  ()      => { res.end();                  });
 		} else {
-			console.log("[" + process.argv[1] + "] Serving file in one chunk");
+			console.log("[" + process.argv[1] + "] Serving " + String(fsize) + " bytes in one chunk");
 			res.writeHead(200, {
 				"Content-Length": fsize,
 				"Content-Type":   process.argv[4]
 			});
 			const stm = fs.createReadStream(process.argv[3]);
 			stm.on("data", (chunk) => { res.write(chunk, "binary"); });
-			stm.on("end",  ()      => { res.end(); });
+			stm.on("end",  ()      => { res.end();                  });
 		}
-	} else {
+	} else if (req.url == "/") {
 		console.log("[" + process.argv[1] + "] Serving client");
 		res.writeHead(200, {
 			"Content-Type": "text/html"
 		});
-		res.end("<!DOCTYPE html><html><head><title>Medjed Client</title><meta charset=\"utf-8\"></head><body><video type=\"" + process.argv[4] + "\" src=\"/content\" controls></video></body></html>");
+		res.end(fs.readFileSync(__dirname + "/frontend/index.html", "utf8").replace(/\>\>\|\|VIDEO_TYPE\|\|\<\</, process.argv[4]));
+	} else if (url.pathname == "/index.html") {
+		console.log("[" + process.argv[1] + "] Attempt to access /index.html directly");	
+		res.writeHead(403, {
+			"Content-Type": "text/plain"
+		});
+		res.end("Don't access index.html directly");
+	} else {
+		const fname = __dirname + "/frontend" + url.pathname;
+		if (!fs.existsSync(fname)) {
+			console.log("[" + process.argv[1] + "] Not found: " + url.pathname);
+			res.writeHead(404, {
+				"Content-Type": "text/plain"
+			});
+			res.end("Not Found: " + url.pathname);
+			return;
+		}
+		console.log("[" + process.argv[1] + "] Serving " + fname);
+		var headers = {};
+		if (fname.endsWith(".js"))
+			headers["Content-Type"] = "text/javascript";
+		else if (fname.endsWith(".css"))
+			headers["Content-Type"] = "text/css";
+		else if (fname.endsWith(".html"))
+			headers["Content-Type"] = "text/html";
+		else
+			headers["Content-Type"] = "application/octet-stream";
+		res.writeHead(200, headers);
+		var stm = fs.createReadStream(fname);
+		stm.on("data", (chunk) => { res.write(chunk, "binary"); });
+		stm.on("end",  ()      => { res.end();                  });
 	}
 }).listen(parseInt(process.argv[2]), "0.0.0.0");
-console.log("Listening on " + process.argv[2]);
+console.log("[" + process.argv[1] + "] Listening on " + process.argv[2]);
